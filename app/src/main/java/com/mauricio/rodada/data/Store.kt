@@ -69,6 +69,8 @@ data class Bike(
     val photoUrl: String = "",
     val log: List<LogEntry> = emptyList(),
     val mine: MySpecs = MySpecs(),
+    /** Kilometraje la última vez que se llenó el tanque (-1 = no se sabe). */
+    val refuelKm: Int = -1,
 ) {
     /** Rendimiento real según las cargas de gasolina, o el que puso el dueño. */
     val realKmPerL: Double
@@ -253,7 +255,7 @@ object Store {
             .put("tireF", ms.tireF).put("tireR", ms.tireR).put("chain", ms.chain).put("notes", ms.notes)
         return JSONObject().put("id", b.id).put("name", b.name).put("year", b.year).put("odo", b.odometer)
             .put("tank", b.tankL).put("kmpl", b.kmPerL).put("maint", m).put("docs", d).put("fuel", f)
-            .put("spec", b.specId).put("photo", b.photo).put("photoUrl", b.photoUrl).put("log", l).put("mine", mj)
+            .put("spec", b.specId).put("photo", b.photo).put("photoUrl", b.photoUrl).put("log", l).put("mine", mj).put("refuel", b.refuelKm)
     }
 
     private fun readBikes(): List<Bike> = runCatching {
@@ -275,6 +277,7 @@ object Store {
                     LogEntry(x.optString("id"), x.optString("date"), x.optInt("km"), x.optString("type"), x.optString("title"), x.optString("notes"),
                         x.optDouble("cost", 0.0), x.optString("shop"), (0 until ph.length()).map { k -> ph.getString(k) })
                 } } },
+                refuelKm = o.optInt("refuel", -1),
                 mine = (o.optJSONObject("mine") ?: JSONObject()).let { x -> MySpecs(x.optString("psiF"), x.optString("psiR"), x.optString("oil"),
                     x.optString("oilL"), x.optString("plug"), x.optString("tireF"), x.optString("tireR"), x.optString("chain"), x.optString("notes")) },
             )

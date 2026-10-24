@@ -25,10 +25,13 @@ import java.util.UUID
  */
 object License {
     /**
-     * false = app para el grupo de amigos: nunca pide código.
-     * true = versión para vender: pide código del Centro de control o prueba gratis.
+     * La venta se prende desde el servidor (biz_settings → apps → rodada → require_code), sin sacar otra versión.
+     * Los celulares que instalaron Rodada antes de «free_until» siguen gratis (el grupo de amigos).
      */
-    const val VENTA = false
+    var required = false; private set
+    /** Aviso opcional que manda el dueño a todos (biz_settings → apps → rodada → notice). */
+    private val _notice = MutableStateFlow("")
+    val notice: StateFlow<String> get() = _notice
 
     private const val APP = "rodada"
     private const val URL = "https://wnwecaapchcfhcljsvli.supabase.co/rest/v1/rpc/"
@@ -60,7 +63,34 @@ object License {
 
     fun init(ctx: Context) {
         gp = ctx.getSharedPreferences("rodada_lic", Context.MODE_PRIVATE)
-        if (!VENTA) { deviceId = ""; _state.value = State.Ok; return }
+        if (gp.getString("first_run", null) == null) gp.edit().putString("first_run", java.time.LocalDate.now().toString()).apply()
+        _notice.value = gp.getString("notice", "").orEmpty()
+        required = isRequired(gp.getBoolean("cfg_req", false), gp.getString("cfg_free", "").orEmpty())
+        scope.launch { refreshConfig(ctx) }
+        if (!required) { deviceId = ""; _state.value = State.Ok; return }
+        startChecks(ctx)
+    }
+
+    private fun isRequired(req: Boolean, freeUntil: String): Boolean {
+        if (!req) return false
+        val first = gp.getString("first_run", "").orEmpty()
+        return !(freeUntil.length == 10 && first.isNotBlank() && first < freeUntil)
+    }
+
+    /** Lee el interruptor del servidor; si cambió a «pedir código», se aplica de inmediato. */
+    private suspend fun refreshConfig(ctx: Context) {
+        val txt = Net.postJson(URL + "rd_app_config", "{}", mapOf("apikey" to KEY), Net.quick) ?: return
+        val o = runCatching { JSONObject(txt) }.getOrNull() ?: return
+        val req = o.optBoolean("require_code", false)
+        val free = o.optString("free_until")
+        gp.edit().putBoolean("cfg_req", req).putString("cfg_free", free).putString("notice", o.optString("notice")).apply()
+        _notice.value = o.optString("notice")
+        val now = isRequired(req, free)
+        if (now && !required) { required = true; withContext(Dispatchers.Main) { startChecks(ctx) } }
+        else if (!now && required) { required = false; _state.value = State.Ok }
+    }
+
+    private fun startChecks(ctx: Context) {
         fp = runCatching {
             val raw = android.provider.Settings.Secure.getString(ctx.contentResolver, android.provider.Settings.Secure.ANDROID_ID).orEmpty()
             if (raw.isBlank()) "" else MessageDigest.getInstance("SHA-256").digest("rodada:$raw".toByteArray()).joinToString("") { "%02x".format(it) }

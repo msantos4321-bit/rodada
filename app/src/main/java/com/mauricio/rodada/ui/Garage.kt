@@ -87,6 +87,10 @@ fun GarageScreen() {
                 Stat("Gasto mes", "$${spent.toInt()}", Modifier.weight(1f), C.bg)
             }
             SoftButton("Registrar carga de gasolina", Modifier.fillMaxWidth(), icon = Icons.Default.LocalGasStation, bg = C.bg) { fuelAdd = true }
+            val rides by com.mauricio.rodada.data.Rides.list.collectAsState()
+            val mine = rides.filter { it.bikeId == b.id || (it.bikeId.isBlank() && it.bike == b.name) }
+            if (mine.isNotEmpty()) Text("Con Rodada: ${com.mauricio.rodada.data.Geo.fmtKm(mine.sumOf { it.stats.distanceM })} en ${mine.size} rodadas · gastado en la bitácora: $${"%,.0f".format(b.log.sumOf { it.cost })}",
+                fontSize = 13.sp, color = C.text2)
         }
 
         SectionTitle("Mantenimiento")
@@ -178,7 +182,7 @@ fun GarageScreen() {
             confirmButton = { TextButton(onClick = {
                 val l = liters.replace(',', '.').toDoubleOrNull() ?: return@TextButton
                 val odo = km.toIntOrNull() ?: b.odometer
-                Store.upsertBike(b.copy(odometer = maxOf(odo, b.odometer), fuel = b.fuel + FuelLog(LocalDate.now().toString(), odo, l, pesos.replace(',', '.').toDoubleOrNull() ?: 0.0)))
+                Store.upsertBike(b.copy(odometer = maxOf(odo, b.odometer), fuel = b.fuel + FuelLog(LocalDate.now().toString(), odo, l, pesos.replace(',', '.').toDoubleOrNull() ?: 0.0), refuelKm = maxOf(odo, b.odometer)))
                 fuelAdd = false
             }) { Text("Guardar", color = C.accentText) } },
             dismissButton = { TextButton(onClick = { fuelAdd = false }) { Text("Cancelar", color = C.text2) } }, containerColor = Color.White)

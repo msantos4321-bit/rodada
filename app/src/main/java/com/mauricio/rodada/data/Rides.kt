@@ -48,6 +48,7 @@ data class Ride(
     val end: Long,
     val bike: String,
     val stats: RideStats,
+    val bikeId: String = "",
     val points: List<RidePoint> = emptyList(),
 )
 
@@ -81,10 +82,10 @@ object Rides {
     }
 
     private fun head(r: Ride) = JSONObject().put("id", r.id).put("title", r.title).put("start", r.start).put("end", r.end)
-        .put("bike", r.bike).put("stats", statsJson(r.stats))
+        .put("bike", r.bike).put("bikeId", r.bikeId).put("stats", statsJson(r.stats))
 
     private fun fromHead(o: JSONObject) = Ride(o.getString("id"), o.optString("title"), o.optLong("start"), o.optLong("end"),
-        o.optString("bike"), statsFrom(o.optJSONObject("stats") ?: JSONObject()))
+        o.optString("bike"), statsFrom(o.optJSONObject("stats") ?: JSONObject()), o.optString("bikeId"))
 
     private fun readIndex(): List<Ride> = runCatching {
         val f = File(dir, "indice.json")

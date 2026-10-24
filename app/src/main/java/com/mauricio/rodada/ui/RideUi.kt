@@ -1,5 +1,8 @@
 package com.mauricio.rodada.ui
 
+import com.mauricio.rodada.data.Family
+import androidx.compose.foundation.horizontalScroll
+import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -114,6 +117,29 @@ fun RideScreen() {
                     OutlineBtn("Quitar ruta (rodar libre)", Modifier.fillMaxWidth()) { Session.setRoute(null) }
                 }
             } ?: Text("Sin ruta: se graba tu rodada libre. Para navegar, planea una ruta en Rutas.", color = C.text2)
+            val bikes by Store.bikes.collectAsState()
+            if (bikes.size > 1) Card {
+                Text("¿Con qué moto vas?", fontWeight = FontWeight.Bold)
+                var cur by remember { mutableStateOf(Store.currentBike?.id) }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    bikes.forEach { b -> Pill(b.name, b.id == cur) { cur = b.id; Store.currentBikeId = b.id } }
+                }
+            }
+            Store.currentBike?.let { b ->
+                val left = if (b.rangeKm > 0 && b.refuelKm >= 0) b.rangeKm - (b.odometer - b.refuelKm) else null
+                if (left != null) Text("Gasolina: te alcanza para ~${left.coerceAtLeast(0)} km (según tu última carga).", color = if (left < 60) C.accentText else C.text2, fontSize = 14.sp)
+            }
+            var family by remember { mutableStateOf(false) }
+            Card {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Avisar a mi familia (Sígueme)", fontWeight = FontWeight.Bold)
+                        Text("Les mandas una liga y ven por dónde vas y a qué hora llegas, sin instalar nada. Al terminar, ven «Llegó bien».", fontSize = 13.sp, color = C.text2)
+                    }
+                    Switch(family, { family = it }, colors = SwitchDefaults.colors(checkedTrackColor = C.accent))
+                }
+            }
+            familyRef.value = family
             if (groups.isNotEmpty()) Card {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -123,7 +149,18 @@ fun RideScreen() {
                     Switch(share, { share = it }, colors = SwitchDefaults.colors(checkedTrackColor = C.accent))
                 }
             }
-            BigButton("Empezar rodada", icon = Icons.Default.PlayArrow, height = 64.dp) { Session.start(ctx, share) }
+            val scope0 = rememberCoroutineScope()
+            BigButton("Empezar rodada", icon = Icons.Default.PlayArrow, height = 64.dp) {
+                if (familyRef.value) scope0.launch {
+                    val tok = Family.start(route?.name.orEmpty())
+                    if (tok != null) {
+                        Session.familyToken = tok
+                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_TEXT, Family.message(tok, route?.name.orEmpty())), "Mandar a mi familia"))
+                    }
+                    Session.start(ctx, share)
+                } else Session.start(ctx, share)
+            }
             Text("Puedes apagar la pantalla o guardar el celular: la rodada, la voz y la detección de caídas siguen funcionando.", fontSize = 13.sp, color = C.text2)
             Spacer(Modifier.height(12.dp))
         }
@@ -189,8 +226,10 @@ fun RideScreen() {
                     Mini(Geo.fmtKm(d.distanceM), "Recorrido", Modifier.weight(1f))
                     Mini(Geo.fmtTime(d.movingS), "En movimiento", Modifier.weight(1f))
                 }
-                Mini(String.format(Locale.US, "%.1f G", maxOf(abs(d.latG), abs(d.longG))), "Fuerza", Modifier.weight(1f))
+                if (d.fuelKm >= 0) Box(Modifier.weight(1f).clickable { refuelAsk.value = true }) { Mini("${d.fuelKm} km", "Gasolina", Modifier.fillMaxWidth()) }
+                else Mini(String.format(Locale.US, "%.1f G", maxOf(abs(d.latG), abs(d.longG))), "Fuerza", Modifier.weight(1f))
             }
+            if (d.sharingFamily) Text("Tu familia ve tu viaje en vivo", fontSize = 12.sp, color = C.green, fontWeight = FontWeight.SemiBold)
             val scope = rememberCoroutineScope()
             if (d.sharing) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Gasolina", "Parada", "Peligro").forEach { q ->
@@ -212,7 +251,11 @@ fun RideScreen() {
             }
         }
     }
+    if (refuelAsk.value) Confirm("¿Llenaste el tanque?", "Reinicio la cuenta de gasolina con el alcance de tu moto.", "Sí, lleno", { Session.refuel(ctx) }, { refuelAsk.value = false })
 }
+
+private val familyRef = mutableStateOf(false)
+private val refuelAsk = mutableStateOf(false)
 
 private fun cardinal(b: Double): String {
     if (b < 0) return "la ruta"

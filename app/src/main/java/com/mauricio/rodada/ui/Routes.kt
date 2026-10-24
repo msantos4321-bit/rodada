@@ -98,6 +98,7 @@ fun RoutesScreen() {
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
     var job by remember { mutableStateOf<Job?>(null) }
+    var offline by remember { mutableStateOf("") }
     val imported by Nav.importedRoute.collectAsState()
 
     fun extras(r: Route) {
@@ -236,6 +237,14 @@ fun RoutesScreen() {
                         val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", f)
                         ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("application/gpx+xml")
                             .putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Compartir ruta"))
+                    }
+                }
+            }
+            route?.let { r ->
+                OutlineBtn(offline.ifBlank { "Descargar mapa de la ruta (sin señal)" }, Modifier.fillMaxWidth()) {
+                    offline = "Descargando mapa… 0%"
+                    com.mauricio.rodada.data.OfflineMaps.download(ctx, r, r.name.ifBlank { "Ruta" }, { pct -> offline = "Descargando mapa… $pct%" }) { ok ->
+                        offline = if (ok) "Mapa listo: lo verás aunque no haya señal" else "La ruta es muy larga para bajarla completa"
                     }
                 }
             }

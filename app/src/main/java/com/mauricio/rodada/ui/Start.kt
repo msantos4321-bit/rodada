@@ -133,7 +133,7 @@ fun Onboarding(done: () -> Unit) {
     }
 }
 
-/** Solo se usa si algún día se activa la versión para vender (License.VENTA = true). */
+/** Pantalla de activación: solo aparece cuando el dueño prende la venta desde el servidor. */
 @Composable
 fun LicenseScreen() {
     val scope = rememberCoroutineScope()
@@ -141,17 +141,22 @@ fun LicenseScreen() {
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val st by License.state.collectAsState()
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Spacer(Modifier.height(32.dp))
         Image(painterResource(R.mipmap.ic_launcher), null, Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)))
         Text("Activa Rodada", style = MaterialTheme.typography.headlineLarge)
+        Text("Rutas con curvas, inclinación, detección de caídas, tu garaje y tu grupo de amigos en una sola app.", color = C.text2)
         (st as? License.State.Need)?.why?.let { Text(it, color = C.red) }
-        Field(code, { code = it.uppercase() }, "Código de activación", placeholder = "RO-XXXX-XXXX")
-        if (msg.isNotBlank()) Text(msg, color = C.red)
-        BigButton(if (busy) "Revisando…" else "Activar", enabled = !busy && code.length >= 8) {
-            busy = true; scope.launch { msg = License.activate(code).orEmpty(); busy = false }
+        Card {
+            Field(code, { code = it.uppercase() }, "Código de activación", placeholder = "RO-XXXX-XXXX")
+            BigButton(if (busy) "Revisando…" else "Activar", enabled = !busy && code.length >= 8) {
+                busy = true; scope.launch { msg = License.activate(code).orEmpty(); busy = false }
+            }
         }
         OutlineBtn("Probar gratis", Modifier.fillMaxWidth()) {
             busy = true; scope.launch { msg = License.trial().orEmpty(); busy = false }
         }
+        if (msg.isNotBlank()) Text(msg, color = C.red)
+        Text("Tu código te lo da quien te vendió Rodada. Funciona sin internet hasta 10 días.", fontSize = 13.sp, color = C.text2)
     }
 }

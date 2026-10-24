@@ -71,6 +71,7 @@ class Avisos(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p) {
         val ctx = applicationContext
         runCatching { messages(ctx) }
         runCatching { weekly(ctx) }
+        runCatching { weather(ctx) }
         runCatching { garage(ctx) }
         return Result.success()
     }
@@ -117,6 +118,40 @@ class Avisos(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p) {
             notify(ctx, 4100, RodadaApp.CH_GROUP, "🏍️ Ruta de la semana: ${pick.name}", "~${pick.km} km. ${pick.description} ¿La hacemos este fin?", "rutas")
         }
         Store.weeklyNotified = wk
+    }
+
+    /** Un día antes de la rodada del grupo: aviso si se pronostica lluvia o viento fuerte en la salida. */
+    private suspend fun weather(ctx: Context) {
+        val g = Group.current ?: return
+        val w = Group.weekly(g.id) ?: return
+        val start = w.startAt ?: return
+        val hours = java.time.Duration.between(java.time.Instant.now(), start).toHours()
+        if (hours !in 10..36) return
+        val sp = ctx.getSharedPreferences("avisos_garaje", Context.MODE_PRIVATE)
+        val key = "clima-${w.week}-${start.epochSecond}"
+        if (sp.getBoolean(key, false)) return
+        val p = w.meetP ?: w.route.waypoints.firstOrNull() ?: return
+        val txt = com.mauricio.rodada.data.Net.get("https://api.open-meteo.com/v1/forecast?latitude=${p.lat}&longitude=${p.lon}" +
+            "&hourly=precipitation_probability,wind_gusts_10m,temperature_2m&timezone=auto&forecast_days=3") ?: return
+        val h = org.json.JSONObject(txt).getJSONObject("hourly")
+        val times = h.getJSONArray("time")
+        val target = start.atZone(ZoneId.systemDefault()).toLocalDateTime().withMinute(0).withSecond(0).withNano(0)
+        var idx = -1
+        for (i in 0 until times.length()) if (LocalDateTime.parse(times.getString(i)) == target) { idx = i; break }
+        if (idx < 0) return
+        var rain = 0; var gust = 0.0; var minT = 99.0
+        for (k in idx until minOf(idx + 6, times.length())) {
+            rain = maxOf(rain, h.getJSONArray("precipitation_probability").optInt(k))
+            gust = maxOf(gust, h.getJSONArray("wind_gusts_10m").optDouble(k))
+            minT = minOf(minT, h.getJSONArray("temperature_2m").optDouble(k))
+        }
+        sp.edit().putBoolean(key, true).apply()
+        val parts = ArrayList<String>()
+        if (rain >= 40) parts += "lluvia $rain%"
+        if (gust >= 50) parts += "ráfagas de ${gust.toInt()} km/h"
+        if (minT <= 6) parts += "frío (${minT.toInt()} °C)"
+        if (parts.isEmpty()) return
+        notify(ctx, 4200, RodadaApp.CH_GROUP, "Pronóstico para «${w.route.name}»", "A la hora de salida: ${parts.joinToString(", ")}. Platíquenlo en el chat por si cambian la hora o la ruta.", "chat")
     }
 
     /** Mantenimiento que ya toca y papeles que vencen en 15 días (una vez por semana cada uno). */

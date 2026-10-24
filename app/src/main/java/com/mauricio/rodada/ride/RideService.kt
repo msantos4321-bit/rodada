@@ -61,7 +61,7 @@ class RideService : Service(), SensorEventListener, LocationListener {
 
     companion object {
         const val START = "start"; const val STOP = "stop"; const val PAUSE = "pause"
-        const val SHARE = "share"; const val SOS = "sos"; const val TEST = "test"
+        const val SHARE = "share"; const val SOS = "sos"; const val TEST = "test"; const val REFUEL = "refuel"; const val FAMILY = "family"
         private const val NOTIF = 7
 
         @Volatile private var instance: RideService? = null
@@ -86,8 +86,12 @@ class RideService : Service(), SensorEventListener, LocationListener {
     private var lastNotif = 0L
     private var rerouting = false
     private var groupJob: Job? = null
+    private var familyJob: Job? = null
     private var crashJob: Job? = null
     private var notice = ""
+    /** Alcance con la gasolina al empezar (+ lo ya recorrido si se cargó en el camino). */
+    private var fuelBase: Double? = null
+    private var fuelSaid = 0
     private var lastNav: NavInfo? = null
     private var lastLocT = 0L
     private var trackSize = -1
@@ -133,6 +137,12 @@ class RideService : Service(), SensorEventListener, LocationListener {
             SHARE -> { share = intent.getBooleanExtra("share", false); if (share) startGroup() else stopGroup(); push(true) }
             SOS -> { if (!recording) startSensorsLite(); triggerCrash(manual = true) }
             TEST -> { if (!recording) startSensorsLite(); triggerCrash(manual = false, test = true) }
+            FAMILY -> { startFamily(); push(true) }
+            REFUEL -> {
+                Store.currentBike?.let { b -> Store.upsertBike(b.copy(refuelKm = b.odometer + (tele.distance / 1000).toInt())) }
+                fuelBase = Store.currentBike?.rangeKm?.toDouble()?.takeIf { it > 0 }?.let { it + tele.distance / 1000 }
+                fuelSaid = 0; say("Tanque lleno. Te alcanza para unos ${Store.currentBike?.rangeKm ?: 0} kilómetros."); push(true)
+            }
             else -> if (!recording) stopSelf()
         }
         return START_STICKY
@@ -168,6 +178,8 @@ class RideService : Service(), SensorEventListener, LocationListener {
         recording = true; paused = false
         startT = System.currentTimeMillis()
         ridingSince = startT; fatigueSaid = 0
+        fuelSaid = 0
+        fuelBase = Store.currentBike?.let { b -> if (b.rangeKm > 0 && b.refuelKm >= 0) (b.rangeKm - (b.odometer - b.refuelKm)).toDouble() else null }
         wake = (getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "rodada:ride").apply { acquire() }
         sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
         sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
@@ -176,6 +188,7 @@ class RideService : Service(), SensorEventListener, LocationListener {
         voice.say(if (nav != null) "Vamos. Sigue la ruta." else "Rodada iniciada. Buen viaje.", false)
         if (Group.groups.value.isEmpty()) scope.launch { Group.refresh() }
         if (share) startGroup()
+        startFamily()
         loadHazards()
         push(true)
     }
@@ -209,7 +222,7 @@ class RideService : Service(), SensorEventListener, LocationListener {
         val when_ = Instant.ofEpochMilli(startT).atZone(ZoneId.systemDefault()).format(fmt)
         val title = Session.route.value?.name?.takeIf { it.isNotBlank() } ?: "Rodada del $when_"
         if (stats.distanceM > 200 && pts.size > 5) {
-            val ride = Ride(UUID.randomUUID().toString(), title, startT, end, Store.currentBike?.name.orEmpty(), stats, pts)
+            val ride = Ride(UUID.randomUUID().toString(), title, startT, end, Store.currentBike?.name.orEmpty(), stats, bikeId = Store.currentBike?.id.orEmpty(), points = pts)
             Rides.save(ride)
             Store.addKm(stats.distanceM / 1000)
             scope.launch { Group.addKm(stats.distanceM / 1000) }
@@ -224,6 +237,7 @@ class RideService : Service(), SensorEventListener, LocationListener {
         runCatching { sm.unregisterListener(this) }
         runCatching { lm.removeUpdates(this) }
         stopGroup()
+        stopFamily(true)
         wake?.let { if (it.isHeld) it.release() }
         wake = null
         Session.set(Dash())
@@ -286,6 +300,15 @@ class RideService : Service(), SensorEventListener, LocationListener {
         checkCrash(now, speed)
         // Cansancio
         fatigue(now, speed)
+        // Gasolina
+        fuelLeft()?.let { left ->
+            val level = when { left <= 25 -> 2; left <= 60 -> 1; else -> 0 }
+            if (level > fuelSaid) {
+                fuelSaid = level
+                say(if (level == 2) "Atención: te quedan unos ${left} kilómetros de gasolina. Carga en la siguiente gasolinera." else "Te quedan unos ${left} kilómetros de gasolina.", level == 2)
+                showNotice("Gasolina para ~$left km")
+            }
+        }
 
         lastLoc = loc
         push(true)
@@ -429,6 +452,8 @@ class RideService : Service(), SensorEventListener, LocationListener {
         }
     }
 
+    private fun fuelLeft(): Int? = fuelBase?.let { (it - tele.distance / 1000).toInt().coerceAtLeast(0) }
+
     private fun showNotice(t: String) { notice = t; noticeT = System.currentTimeMillis() }
 
     // ---------- Grupo en vivo ----------
@@ -461,6 +486,31 @@ class RideService : Service(), SensorEventListener, LocationListener {
                 push(true)
                 delay(5000)
             }
+        }
+    }
+
+    private fun startFamily() {
+        if (familyJob != null) return
+        val token = Session.familyToken ?: return
+        familyJob = scope.launch {
+            while (isActive) {
+                val l = lastLoc
+                val n = lastNav
+                val status = when { Session.crash.value?.sent == true -> "sos"; paused -> "pausa"; else -> "rodando" }
+                com.mauricio.rodada.data.Family.update(token, l?.let { P(it.latitude, it.longitude) }, tele.speedMs * 3.6,
+                    n?.let { (it.remainingS / 60).toInt() }, n?.let { it.remainingM / 1000 }, status)
+                delay(30_000)
+            }
+        }
+    }
+
+    private fun stopFamily(arrived: Boolean) {
+        familyJob?.cancel(); familyJob = null
+        val token = Session.familyToken ?: return
+        Session.familyToken = null
+        val l = lastLoc
+        CoroutineScope(Dispatchers.IO).launch {
+            com.mauricio.rodada.data.Family.update(token, l?.let { P(it.latitude, it.longitude) }, 0.0, 0, 0.0, if (arrived) "llego" else "terminado")
         }
     }
 
@@ -519,6 +569,8 @@ class RideService : Service(), SensorEventListener, LocationListener {
             nav = navInfo, launch = tele.lastLaunch, notice = notice, sharing = groupJob != null,
             riders = riders, groupAlert = groupAlert, sos = sosMsg, rerouting = rerouting,
             track = track,
+            fuelKm = fuelLeft() ?: -1,
+            sharingFamily = familyJob != null,
         ))
     }
 }

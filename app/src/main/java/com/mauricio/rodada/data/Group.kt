@@ -96,6 +96,11 @@ object Group {
         refresh()
     }
 
+    suspend fun rename(group: String, name: String) = call("rd_group_rename", JSONObject().put("p_group", group).put("p_name", name)).also { refresh() }
+    suspend fun kick(group: String, member: String) = call("rd_group_kick", JSONObject().put("p_group", group).put("p_member", member)).also { refresh() }
+    suspend fun makeAdmin(group: String, member: String) = call("rd_group_admin", JSONObject().put("p_group", group).put("p_member", member)).also { refresh() }
+    suspend fun newCode(group: String) = call("rd_group_newcode", JSONObject().put("p_group", group)).also { refresh() }
+
     suspend fun setHome(group: String, p: P) = call("rd_group_home", JSONObject().put("p_group", group).put("p_lat", p.lat).put("p_lon", p.lon))
 
     private fun parseMsg(o: JSONObject) = Msg(o.optLong("id"), o.optString("member"), o.optString("name"), o.optString("color"),

@@ -128,6 +128,8 @@ fun GroupScreen(act: MainActivity) {
     var err by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var leave by remember { mutableStateOf(false) }
+    var adminOpen by remember { mutableStateOf(false) }
+    var memberMenu by remember { mutableStateOf<com.mauricio.rodada.data.Member?>(null) }
     var gid by remember { mutableStateOf(Store.groupId) }
     val g = groups.firstOrNull { it.id == gid } ?: groups.firstOrNull()
 
@@ -197,10 +199,12 @@ fun GroupScreen(act: MainActivity) {
             Row2("Ángel guardián", "Si alguien del grupo se cae o pide ayuda, todos reciben la alerta con su ubicación.",
                 leading = { IconBadge(Icons.Default.Shield, C.red, C.redSoft) }, divider = false)
         }
-        SectionTitle("Integrantes (${g.members.size})")
+        val iAmAdmin = g.members.any { it.id == Store.memberId && it.role == "admin" }
+        SectionTitle("Integrantes (${g.members.size})", action = if (iAmAdmin) "Administrar" else null, onAction = { adminOpen = true })
         Card(padding = 14.dp) {
             g.members.forEachIndexed { i, m ->
                 Row2(m.name.ifBlank { "Sin nombre" } + if (m.id == Store.memberId) " (tú)" else "", listOf(m.bike, if (m.role == "admin") "creó el grupo" else "").filter { it.isNotBlank() }.joinToString(" · "),
+                    onClick = if (iAmAdmin && m.id != Store.memberId) ({ memberMenu = m }) else null,
                     leading = { if (m.photo.isNotBlank()) coil.compose.AsyncImage(m.photo, null, Modifier.size(40.dp).clip(CircleShape),
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop) else Avatar(m.name, C.parse(m.color, C.accent)) }, divider = i < g.members.size - 1)
             }
@@ -211,6 +215,23 @@ fun GroupScreen(act: MainActivity) {
         OutlineBtn("Salir del grupo", Modifier.fillMaxWidth(), color = C.red) { leave = true }
         if (err.isNotBlank()) Text(err, color = C.red)
         Spacer(Modifier.height(16.dp))
+    }
+    memberMenu?.let { m ->
+        androidx.compose.material3.AlertDialog(onDismissRequest = { memberMenu = null }, title = { Text(m.name) }, containerColor = Color.White,
+            text = { Text(if (m.role == "admin") "Es administrador del grupo." else "Puedes hacerlo administrador o quitarlo del grupo.") },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { scope.launch { Group.kick(g.id, m.id) }; memberMenu = null }) { Text("Quitar del grupo", color = C.red) } },
+            dismissButton = { if (m.role != "admin") androidx.compose.material3.TextButton(onClick = { scope.launch { Group.makeAdmin(g.id, m.id) }; memberMenu = null }) { Text("Hacer admin", color = C.accentText) } })
+    }
+    if (adminOpen) {
+        var newName by remember { mutableStateOf(g.name) }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { adminOpen = false }, title = { Text("Administrar grupo") }, containerColor = Color.White,
+            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Field(newName, { newName = it }, "Nombre del grupo")
+                Text("Código actual: ${g.code}. Si cambias el código, el anterior deja de servir para entrar (los que ya están siguen dentro).", fontSize = 13.sp, color = C.text2)
+                SoftButton("Cambiar código", Modifier.fillMaxWidth(), bg = C.bg) { scope.launch { Group.newCode(g.id) } }
+            } },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { scope.launch { if (newName.isNotBlank() && newName != g.name) Group.rename(g.id, newName.trim()) }; adminOpen = false }) { Text("Guardar", color = C.accentText) } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { adminOpen = false }) { Text("Cerrar", color = C.text2) } })
     }
     if (leave) Confirm("¿Salir de ${g.name}?", "Puedes volver a entrar con el código ${g.code}.", "Salir", { scope.launch { Group.leave(g.id) } }, { leave = false }, danger = true)
 }

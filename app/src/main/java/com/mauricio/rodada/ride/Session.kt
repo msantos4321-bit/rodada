@@ -35,6 +35,9 @@ data class Dash(
     val sos: Msg? = null,
     val rerouting: Boolean = false,
     val track: List<P> = emptyList(),
+    /** Kilómetros que quedan de gasolina (-1 = no se sabe). */
+    val fuelKm: Int = -1,
+    val sharingFamily: Boolean = false,
 )
 
 data class CrashState(val secondsLeft: Int, val sent: Boolean = false, val message: String = "")
@@ -59,6 +62,9 @@ object Session {
 
     /** Rodada recién terminada para abrir su resumen. */
     val finished = MutableStateFlow<String?>(null)
+
+    /** Liga «Sígueme» activa (la familia ve el viaje). */
+    @Volatile var familyToken: String? = null
 
     @Volatile var cancelCrash = false
     @Volatile var helpNow = false
@@ -106,6 +112,16 @@ object Session {
     /** Simula una caída para probar la alerta (no manda mensajes reales). */
     fun testCrash(ctx: Context) {
         launch(ctx, RideService.TEST)
+    }
+
+    /** Empieza a mandar la ubicación a la liga «Sígueme» (si ya hay rodada). */
+    fun familyOn(ctx: Context) {
+        ctx.startService(Intent(ctx, RideService::class.java).setAction(RideService.FAMILY))
+    }
+
+    /** «Llené el tanque» durante la rodada. */
+    fun refuel(ctx: Context) {
+        ctx.startService(Intent(ctx, RideService::class.java).setAction(RideService.REFUEL))
     }
 
     fun imOk() { cancelCrash = true }

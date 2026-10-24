@@ -67,6 +67,7 @@ sealed interface Scr {
     data class Log(val id: String) : Scr
     data class LogEdit(val bikeId: String, val entryId: String?) : Scr
     data class Checklist(val id: String) : Scr
+    data object Help : Scr
 }
 
 /** Navegación sencilla con pila (el botón Regresar funciona en todas las pantallas). */
@@ -96,7 +97,7 @@ fun App(act: MainActivity) {
         Updater.check()
     }
 
-    if (License.VENTA && lic !is License.State.Ok) { LicenseScreen(); return }
+    if (License.required && lic is License.State.Need) { LicenseScreen(); return }
     if (!onboarded) { Onboarding { onboarded = true }; return }
 
     // Notificaciones y enlaces que piden abrir una pestaña
@@ -149,6 +150,7 @@ fun App(act: MainActivity) {
                     is Scr.Log -> LogScreen(cur.id)
                     is Scr.LogEdit -> LogEditScreen(cur.bikeId, cur.entryId)
                     is Scr.Checklist -> ChecklistScreen(cur.id)
+                    Scr.Help -> HelpScreen()
                 }
             }
             val tabs = listOf(

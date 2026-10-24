@@ -20,6 +20,7 @@ class RodadaApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Store.init(this)
+        com.mauricio.rodada.data.Crash.install(this)
         Rides.init(this)
         License.init(this)
         MapLibre.getInstance(this)

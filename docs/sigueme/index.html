@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sígueme · Rodada</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--bg:#F5F5F7;--card:#fff;--text:#1D1D1F;--text2:#6E6E73;--accent:#D9480F;--green:#1E7B34;--red:#C92A2A}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
+#map{flex:1;min-height:55vh}
+.panel{background:var(--card);border-radius:22px 22px 0 0;margin-top:-20px;position:relative;z-index:500;padding:18px 18px 24px;box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+h1{margin:0 0 4px;font-size:22px}
+.sub{color:var(--text2);font-size:14px}
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.stat{background:var(--bg);border-radius:14px;padding:10px}
+.stat b{display:block;font-size:19px}
+.stat span{font-size:12px;color:var(--text2)}
+.banner{border-radius:14px;padding:12px 14px;margin-top:12px;font-weight:600}
+.ok{background:#E8F3EC;color:var(--green)}
+.sos{background:#FDECEC;color:var(--red)}
+.brand{display:flex;align-items:center;gap:8px;margin-top:14px;color:var(--text2);font-size:12px}
+.brand i{width:18px;height:18px;border-radius:5px;background:var(--accent);display:inline-block}
+a{color:#B8400B}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="panel">
+  <h1 id="title">Cargando…</h1>
+  <div class="sub" id="sub"></div>
+  <div class="row">
+    <div class="stat"><b id="eta">—</b><span>Llega aprox.</span></div>
+    <div class="stat"><b id="rem">—</b><span>Le faltan</span></div>
+    <div class="stat"><b id="spd">—</b><span>Velocidad</span></div>
+  </div>
+  <div id="banner"></div>
+  <div class="brand"><i></i> Rodada · la app para motociclistas</div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const K = "sb_publishable_vnkSLd5EzN53_LBv76YxUA_QRo2u8ok";
+const U = "https://wnwecaapchcfhcljsvli.supabase.co/rest/v1/rpc/rd_share_get";
+const t = new URLSearchParams(location.search).get("t") || "";
+const map = L.map("map", { zoomControl: false }).setView([32.52, -117.04], 11);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
+let marker = null, line = null, first = true;
+const $ = id => document.getElementById(id);
+async function load() {
+  if (!t) { $("title").textContent = "Liga incompleta"; return; }
+  try {
+    const r = await fetch(U, { method: "POST", headers: { apikey: K, "Content-Type": "application/json" }, body: JSON.stringify({ p_token: t }) });
+    const d = await r.json();
+    if (!d) { $("title").textContent = "Este viaje ya no está disponible"; return; }
+    const who = d.name || "Tu contacto";
+    $("title").textContent = d.dest ? `${who} va a ${d.dest}` : `${who} va en moto`;
+    const mins = Math.round((d.age || 0) / 60);
+    $("sub").textContent = d.lat == null ? "Esperando la primera ubicación…" : (mins < 1 ? "Actualizado hace unos segundos" : `Actualizado hace ${mins} min`);
+    $("spd").textContent = d.speed != null ? Math.round(d.speed) + " km/h" : "—";
+    $("rem").textContent = d.remaining_km != null ? (d.remaining_km < 1 ? Math.round(d.remaining_km * 1000) + " m" : d.remaining_km.toFixed(1) + " km") : "—";
+    if (d.eta_min != null) { const e = new Date(Date.now() + d.eta_min * 60000); $("eta").textContent = e.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }); } else $("eta").textContent = "—";
+    let b = "";
+    if (d.status === "llego") b = `<div class="banner ok">✅ ${who} llegó bien.</div>`;
+    else if (d.status === "terminado") b = `<div class="banner ok">El viaje terminó.</div>`;
+    else if (d.status === "sos") b = `<div class="banner sos">🚨 ${who} pudo haberse caído. Llámale y, si no contesta, llama al 911 con esta ubicación.</div>`;
+    else if (mins >= 10) b = `<div class="banner sos">Hace ${mins} min que no llega su ubicación (puede estar sin señal).</div>`;
+    $("banner").innerHTML = b;
+    if (d.lat != null) {
+      const p = [d.lat, d.lon];
+      if (!marker) marker = L.circleMarker(p, { radius: 10, color: "#fff", weight: 3, fillColor: "#D9480F", fillOpacity: 1 }).addTo(map); else marker.setLatLng(p);
+      const tr = (d.track || []).map(x => [x[0], x[1]]);
+      if (tr.length > 1) { if (!line) line = L.polyline(tr, { color: "#D9480F", weight: 5, opacity: .8 }).addTo(map); else line.setLatLngs(tr); }
+      if (first) { map.setView(p, 13); first = false; } else map.panTo(p);
+    }
+  } catch (e) { $("sub").textContent = "Sin conexión, reintentando…"; }
+}
+load(); setInterval(load, 15000);
+</script>
+</body>
+</html>

@@ -58,6 +58,7 @@ fun SafetyScreen() {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Header("Seguridad", onBack = { Nav.back() })
+        PermsCard()
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -119,6 +120,18 @@ fun SettingsScreen() {
     var name by remember { mutableStateOf(prof.name) }
     var homeMsg by remember { mutableStateOf("") }
     val days = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+    var backupMsg by remember { mutableStateOf("") }
+    var report by remember { mutableStateOf("") }
+    var wipeAsk by remember { mutableStateOf(false) }
+    val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch { backupMsg = if (com.mauricio.rodada.data.Backup.export(ctx, uri)) "Respaldo guardado." else "No se pudo guardar el respaldo." }
+    }
+    val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        backupMsg = "Restaurando…"
+        scope.launch { if (!com.mauricio.rodada.data.Backup.restore(ctx, uri)) backupMsg = "Ese archivo no es un respaldo de Rodada." }
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Header("Ajustes", onBack = { Nav.back() })
@@ -159,6 +172,33 @@ fun SettingsScreen() {
             if (homeMsg.isNotBlank()) Text(homeMsg, fontSize = 13.sp, color = C.text2)
         }
         Card(onClick = { Nav.go(Scr.Safety) }) { Row2("Seguridad y contactos", "Caídas, SOS y ficha médica", divider = false) }
+        Card(onClick = { Nav.go(Scr.Help) }) { Row2("Ayuda", "Preguntas frecuentes", divider = false) }
+        Card {
+            Text("Respaldo", fontWeight = FontWeight.Bold)
+            Text("Guarda tus motos, bitácora con fotos, rodadas y contactos en un archivo para pasarlos a otro celular.", fontSize = 13.sp, color = C.text2)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SoftButton("Guardar respaldo", Modifier.weight(1f), bg = C.bg) { saveBackup.launch("Rodada-respaldo-${java.time.LocalDate.now()}.zip") }
+                SoftButton("Restaurar", Modifier.weight(1f), bg = C.bg) { openBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }
+            }
+            if (backupMsg.isNotBlank()) Text(backupMsg, fontSize = 13.sp, color = C.text2)
+        }
+        Card {
+            Text("¿Algo no funciona o tienes una idea?", fontWeight = FontWeight.Bold)
+            Field(report, { report = it }, "Cuéntanos qué pasó", singleLine = false)
+            SoftButton("Mandar reporte", Modifier.fillMaxWidth(), bg = C.bg) {
+                val t = report.trim(); if (t.isBlank()) return@SoftButton
+                scope.launch {
+                    val r = com.mauricio.rodada.data.Group.call("rd_crash_add", org.json.JSONObject().put("p_version", BuildConfig.VERSION_NAME)
+                        .put("p_device", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL).put("p_trace", "REPORTE: $t"))
+                    backupMsg = if (r != null) "¡Gracias! Recibimos tu reporte." else "No se pudo mandar. Revisa tu internet."
+                    if (r != null) report = ""
+                }
+            }
+        }
+        Card(onClick = { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://msantos4321-bit.github.io/rodada/privacidad.html"))) } }) {
+            Row2("Aviso de privacidad y términos", "Qué datos usa Rodada y para qué", divider = false)
+        }
+        OutlineBtn("Borrar mis datos", Modifier.fillMaxWidth(), color = C.red) { wipeAsk = true }
         Card {
             Text("Rodada ${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Bold)
             Text(when (upd) {
@@ -178,6 +218,9 @@ fun SettingsScreen() {
         }
         Spacer(Modifier.height(16.dp))
     }
+    if (wipeAsk) Confirm("¿Borrar todos tus datos?", "Se borran tus motos, bitácora, rodadas, contactos y lo que compartiste en tus grupos. No se puede deshacer. Si quieres conservarlos, primero guarda un respaldo.", "Borrar todo", {
+        scope.launch { com.mauricio.rodada.data.Group.call("rd_delete_me", org.json.JSONObject()); com.mauricio.rodada.data.Backup.wipe(ctx) }
+    }, { wipeAsk = false }, danger = true)
 }
 
 @Composable

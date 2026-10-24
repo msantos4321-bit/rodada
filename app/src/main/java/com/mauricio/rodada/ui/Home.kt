@@ -3,6 +3,7 @@ package com.mauricio.rodada.ui
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -118,6 +119,10 @@ fun HomeScreen() {
             BigButton("Instalar actualización", color = C.blue) { if (Updater.canInstall(ctx)) Updater.install(ctx, f) else Updater.openInstallPermission(ctx) }
         }
 
+        val notice by com.mauricio.rodada.data.License.notice.collectAsState()
+        if (notice.isNotBlank()) Card { Text(notice, fontSize = 15.sp) }
+        PermsCard(onlyMissing = true)
+
         val bike = Store.currentBike
         Card(onClick = { Nav.tab(Scr.Garage) }) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -131,6 +136,10 @@ fun HomeScreen() {
             }
         }
 
+        if (bikes.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            var cur by remember { mutableStateOf(Store.currentBikeId) }
+            bikes.forEach { b -> Pill(b.name, b.id == (cur.ifBlank { bikes.first().id })) { cur = b.id; Store.currentBikeId = b.id } }
+        }
         BigButton("Empezar rodada", icon = Icons.Default.PlayArrow, height = 64.dp) {
             Session.start(ctx, share = Group.current != null)
             Nav.tab(Scr.Ride)
@@ -202,11 +211,23 @@ fun RideRow(r: Ride, divider: Boolean) {
 
 @Composable
 fun RidesScreen() {
-    val rides by Rides.list.collectAsState()
+    val all by Rides.list.collectAsState()
+    val bikes by Store.bikes.collectAsState()
+    var bikeF by remember { mutableStateOf<String?>(null) }
+    val rides = all.filter { r -> bikeF == null || r.bikeId == bikeF || (r.bikeId.isBlank() && r.bike == bikes.firstOrNull { it.id == bikeF }?.name) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Header("Mis rodadas", onBack = { Nav.back() })
+        if (bikes.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill("Todas", bikeF == null) { bikeF = null }
+            bikes.forEach { b -> Pill(b.name, bikeF == b.id) { bikeF = b.id } }
+        }
         val total = rides.sumOf { it.stats.distanceM }
         Text("${rides.size} rodadas · ${Geo.fmtKm(total)} en total", color = C.text2)
+        if (rides.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Stat("Más larga", Geo.fmtKm(rides.maxOf { it.stats.distanceM }), Modifier.weight(1f))
+            Stat("Incl. máx.", "${rides.maxOf { maxOf(it.stats.maxLeanL, it.stats.maxLeanR) }.toInt()}°", Modifier.weight(1f))
+            Stat("Horas", Geo.fmtTime(rides.sumOf { it.stats.movingS }), Modifier.weight(1f))
+        }
         Card(padding = 12.dp) { rides.forEachIndexed { i, r -> RideRow(r, i < rides.size - 1) } }
         Spacer(Modifier.height(16.dp))
     }
