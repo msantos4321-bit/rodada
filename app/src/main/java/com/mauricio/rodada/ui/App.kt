@@ -59,6 +59,14 @@ sealed interface Scr {
     data class BikeEdit(val id: String?) : Scr
     data object Weekly : Scr
     data object Catalog : Scr
+    data object Feed : Scr
+    data class NewPost(val rideId: String?) : Scr
+    data object PostDetail : Scr
+    data object PhotoView : Scr
+    data class MyBike(val id: String) : Scr
+    data class Log(val id: String) : Scr
+    data class LogEdit(val bikeId: String, val entryId: String?) : Scr
+    data class Checklist(val id: String) : Scr
 }
 
 /** Navegación sencilla con pila (el botón Regresar funciona en todas las pantallas). */
@@ -115,7 +123,7 @@ fun App(act: MainActivity) {
     val crash by Session.crash.collectAsState()
     Box(Modifier.fillMaxSize().background(C.bg)) {
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f).fillMaxWidth().let { if (cur == Scr.Ride || cur == Scr.Live) it else it.statusBarsPadding() }) {
+            Box(Modifier.weight(1f).fillMaxWidth().let { if (cur == Scr.Ride || cur == Scr.Live || cur == Scr.PhotoView) it else it.statusBarsPadding() }) {
                 when (cur) {
                     Scr.Home -> HomeScreen()
                     Scr.Routes -> RoutesScreen()
@@ -133,6 +141,14 @@ fun App(act: MainActivity) {
                     is Scr.BikeEdit -> BikeEditScreen(cur.id)
                     Scr.Weekly -> WeeklyScreen()
                     Scr.Catalog -> CatalogScreen()
+                    Scr.Feed -> FeedScreen()
+                    is Scr.NewPost -> NewPostScreen(cur.rideId)
+                    Scr.PostDetail -> PostDetailScreen()
+                    Scr.PhotoView -> PhotoViewScreen()
+                    is Scr.MyBike -> MyBikeScreen(cur.id)
+                    is Scr.Log -> LogScreen(cur.id)
+                    is Scr.LogEdit -> LogEditScreen(cur.bikeId, cur.entryId)
+                    is Scr.Checklist -> ChecklistScreen(cur.id)
                 }
             }
             val tabs = listOf(
@@ -143,7 +159,7 @@ fun App(act: MainActivity) {
                 Triple(Scr.Garage, "Garaje", Icons.Default.Garage),
             )
             val root = Nav.stack.first()
-            if (cur != Scr.Ride && cur != Scr.Live) NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
+            if (cur != Scr.Ride && cur != Scr.Live && cur != Scr.PhotoView) NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
                 tabs.forEach { (s, label, icon) ->
                     NavigationBarItem(selected = root == s, onClick = { Nav.tab(s) },
                         icon = { Icon(icon, label) }, label = { Text(label) },

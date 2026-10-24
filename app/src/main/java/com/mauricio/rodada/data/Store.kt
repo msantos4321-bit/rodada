@@ -33,6 +33,25 @@ data class Doc(val id: String = UUID.randomUUID().toString(), val name: String, 
 
 data class FuelLog(val date: String, val km: Int, val liters: Double, val pesos: Double)
 
+/** Bitácora: mantenimiento, reparación o modificación, con fotos guardadas en el celular. */
+data class LogEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val date: String = LocalDate.now().toString(),
+    val km: Int = 0,
+    val type: String = "mantenimiento",
+    val title: String = "",
+    val notes: String = "",
+    val cost: Double = 0.0,
+    val shop: String = "",
+    val photos: List<String> = emptyList(),
+)
+
+/** Datos propios de la moto que corrigen la ficha de referencia (los del manual o la etiqueta). */
+data class MySpecs(
+    val psiF: String = "", val psiR: String = "", val oil: String = "", val oilL: String = "",
+    val plug: String = "", val tireF: String = "", val tireR: String = "", val chain: String = "", val notes: String = "",
+)
+
 data class Bike(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -43,6 +62,13 @@ data class Bike(
     val maint: List<MaintItem> = defaultMaint(0),
     val docs: List<Doc> = listOf(Doc(name = "Seguro", expires = ""), Doc(name = "Tarjeta de circulación", expires = ""), Doc(name = "Licencia", expires = "")),
     val fuel: List<FuelLog> = emptyList(),
+    /** Ficha del catálogo de Rodada (0 = sin ficha). */
+    val specId: Int = 0,
+    /** Foto de la moto: archivo en el celular y su copia en línea (la ve el grupo). */
+    val photo: String = "",
+    val photoUrl: String = "",
+    val log: List<LogEntry> = emptyList(),
+    val mine: MySpecs = MySpecs(),
 ) {
     /** Rendimiento real según las cargas de gasolina, o el que puso el dueño. */
     val realKmPerL: Double
@@ -218,8 +244,16 @@ object Store {
         val m = JSONArray(); b.maint.forEach { m.put(JSONObject().put("id", it.id).put("name", it.name).put("km", it.everyKm).put("months", it.everyMonths).put("lastKm", it.lastKm).put("lastDate", it.lastDate)) }
         val d = JSONArray(); b.docs.forEach { d.put(JSONObject().put("id", it.id).put("name", it.name).put("exp", it.expires)) }
         val f = JSONArray(); b.fuel.forEach { f.put(JSONObject().put("date", it.date).put("km", it.km).put("l", it.liters).put("p", it.pesos)) }
+        val l = JSONArray(); b.log.forEach { e ->
+            l.put(JSONObject().put("id", e.id).put("date", e.date).put("km", e.km).put("type", e.type).put("title", e.title)
+                .put("notes", e.notes).put("cost", e.cost).put("shop", e.shop).put("photos", JSONArray(e.photos)))
+        }
+        val ms = b.mine
+        val mj = JSONObject().put("psiF", ms.psiF).put("psiR", ms.psiR).put("oil", ms.oil).put("oilL", ms.oilL).put("plug", ms.plug)
+            .put("tireF", ms.tireF).put("tireR", ms.tireR).put("chain", ms.chain).put("notes", ms.notes)
         return JSONObject().put("id", b.id).put("name", b.name).put("year", b.year).put("odo", b.odometer)
             .put("tank", b.tankL).put("kmpl", b.kmPerL).put("maint", m).put("docs", d).put("fuel", f)
+            .put("spec", b.specId).put("photo", b.photo).put("photoUrl", b.photoUrl).put("log", l).put("mine", mj)
     }
 
     private fun readBikes(): List<Bike> = runCatching {
@@ -235,6 +269,14 @@ object Store {
                 maint = (0 until m.length()).map { j -> m.getJSONObject(j).let { x -> MaintItem(x.optString("id"), x.optString("name"), x.optInt("km"), x.optInt("months"), x.optInt("lastKm"), x.optString("lastDate")) } },
                 docs = (0 until d.length()).map { j -> d.getJSONObject(j).let { x -> Doc(x.optString("id"), x.optString("name"), x.optString("exp")) } },
                 fuel = (0 until f.length()).map { j -> f.getJSONObject(j).let { x -> FuelLog(x.optString("date"), x.optInt("km"), x.optDouble("l"), x.optDouble("p")) } },
+                specId = o.optInt("spec"), photo = o.optString("photo"), photoUrl = o.optString("photoUrl"),
+                log = (o.optJSONArray("log") ?: JSONArray()).let { l -> (0 until l.length()).map { j -> l.getJSONObject(j).let { x ->
+                    val ph = x.optJSONArray("photos") ?: JSONArray()
+                    LogEntry(x.optString("id"), x.optString("date"), x.optInt("km"), x.optString("type"), x.optString("title"), x.optString("notes"),
+                        x.optDouble("cost", 0.0), x.optString("shop"), (0 until ph.length()).map { k -> ph.getString(k) })
+                } } },
+                mine = (o.optJSONObject("mine") ?: JSONObject()).let { x -> MySpecs(x.optString("psiF"), x.optString("psiR"), x.optString("oil"),
+                    x.optString("oilL"), x.optString("plug"), x.optString("tireF"), x.optString("tireR"), x.optString("chain"), x.optString("notes")) },
             )
         }
     }.getOrDefault(emptyList())

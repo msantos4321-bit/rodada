@@ -63,6 +63,14 @@ fun GarageScreen() {
         if (bikes.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             bikes.forEach { x -> Pill(x.name, x.id == b.id) { sel = x.id; Store.currentBikeId = x.id } }
         }
+        Card(padding = 0.dp, onClick = { Nav.go(Scr.MyBike(b.id)) }) {
+            BikeImage(b, "", Modifier.fillMaxWidth().height(190.dp))
+            Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SoftButton("Ficha", Modifier.weight(1f), bg = C.bg, height = 44.dp) { Nav.go(Scr.MyBike(b.id)) }
+                SoftButton("Bitácora", Modifier.weight(1f), bg = C.bg, height = 44.dp) { Nav.go(Scr.Log(b.id)) }
+                SoftButton("Antes de salir", Modifier.weight(1.3f), bg = C.bg, height = 44.dp) { Nav.go(Scr.Checklist(b.id)) }
+            }
+        }
         Card {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

@@ -121,7 +121,8 @@ fun HomeScreen() {
         val bike = Store.currentBike
         Card(onClick = { Nav.tab(Scr.Garage) }) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                IconBadge(Icons.Default.TwoWheeler, size = 56.dp)
+                if (bike != null && (bike.photo.isNotBlank() || bike.photoUrl.isNotBlank())) BikeImage(bike, "", Modifier.size(56.dp).clip(RoundedCornerShape(14.dp)))
+                else IconBadge(Icons.Default.TwoWheeler, size = 56.dp)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Tu moto", fontSize = 13.sp, color = C.text2)
                     Text(bike?.name ?: "Agrega tu moto", fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -293,6 +294,7 @@ fun SummaryScreen(id: String) {
             }
             SoftButton("Borrar", Modifier.weight(1f), icon = Icons.Default.Delete, color = C.red) { del = true }
         }
+        if (Group.current != null) BigButton("Compartir fotos con el grupo", icon = Icons.Default.Share) { Nav.go(Scr.NewPost(r.id)) }
         Spacer(Modifier.height(16.dp))
     }
     if (rename && r != null) {

@@ -6,7 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
 
-data class Member(val id: String, val name: String, val color: String, val bike: String, val role: String)
+data class Member(val id: String, val name: String, val color: String, val bike: String, val role: String, val photo: String = "")
 data class GroupInfo(val id: String, val code: String, val name: String, val home: P?, val members: List<Member>)
 data class Msg(val id: Long, val member: String, val name: String, val color: String, val kind: String, val body: String, val data: JSONObject?, val at: String, val group: String = "", val groupName: String = "")
 data class Answer(val member: String, val name: String, val color: String, val answer: String)
@@ -39,7 +39,7 @@ object Group {
 
     val current: GroupInfo? get() = _groups.value.firstOrNull { it.id == Store.groupId } ?: _groups.value.firstOrNull()
 
-    private suspend fun call(fn: String, body: JSONObject): String? {
+    internal suspend fun call(fn: String, body: JSONObject): String? {
         body.put("p_me", Store.memberId)
         return Net.postJson(URL + fn, body.toString(), mapOf("apikey" to KEY), Net.quick)
     }
@@ -57,8 +57,10 @@ object Group {
         val ms = o.optJSONArray("members") ?: JSONArray()
         val home = if (o.isNull("home_lat")) null else P(o.optDouble("home_lat"), o.optDouble("home_lon"))
         return GroupInfo(o.optString("id"), o.optString("code"), o.optString("name"), home,
-            (0 until ms.length()).map { ms.getJSONObject(it).let { m -> Member(m.optString("id"), m.optString("name"), m.optString("color"), m.optString("bike"), m.optString("role")) } })
+            (0 until ms.length()).map { ms.getJSONObject(it).let { m -> Member(m.optString("id"), m.optString("name"), m.optString("color"), m.optString("bike"), m.optString("role"), m.optString("photo")) } })
     }
+
+    suspend fun setPhoto(url: String) = call("rd_member_photo", JSONObject().put("p_url", url))
 
     suspend fun refresh(): Boolean {
         val a = arr(call("rd_groups_mine", JSONObject())) ?: return false

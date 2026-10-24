@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
@@ -187,6 +188,7 @@ fun GroupScreen(act: MainActivity) {
             if (msgs.isEmpty()) Text("Escribe para ponerse de acuerdo.", color = C.text2, fontSize = 14.sp)
         }
 
+        FeedPreview(g.id)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             QuickCard("Comunidad", "Kilómetros del mes, logros y peligros", Icons.Default.EmojiEvents, Modifier.weight(1f)) { Nav.go(Scr.Community) }
             QuickCard("Lugares", "Cafés, talleres y miradores del grupo", Icons.Default.Place, Modifier.weight(1f)) { Nav.go(Scr.Places) }
@@ -199,7 +201,8 @@ fun GroupScreen(act: MainActivity) {
         Card(padding = 14.dp) {
             g.members.forEachIndexed { i, m ->
                 Row2(m.name.ifBlank { "Sin nombre" } + if (m.id == Store.memberId) " (tú)" else "", listOf(m.bike, if (m.role == "admin") "creó el grupo" else "").filter { it.isNotBlank() }.joinToString(" · "),
-                    leading = { Avatar(m.name, C.parse(m.color, C.accent)) }, divider = i < g.members.size - 1)
+                    leading = { if (m.photo.isNotBlank()) coil.compose.AsyncImage(m.photo, null, Modifier.size(40.dp).clip(CircleShape),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop) else Avatar(m.name, C.parse(m.color, C.accent)) }, divider = i < g.members.size - 1)
             }
         }
         BigButton("Invitar amigos", icon = Icons.Default.PersonAdd) {
@@ -322,7 +325,7 @@ private fun Bubble(m: Msg, openLoc: (P) -> Unit) {
     val mine = m.member == Store.memberId
     val time = runCatching { java.time.OffsetDateTime.parse(m.at).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")) }.getOrDefault("")
     val loc = m.data?.let { d -> if (d.has("lat")) P(d.optDouble("lat"), d.optDouble("lon")) else null }
-    if (m.kind in listOf("system", "rsvp", "weekly", "hazard")) {
+    if (m.kind in listOf("system", "rsvp", "weekly", "hazard", "post", "comment")) {
         Text(m.body + "  $time", fontSize = 13.sp, color = C.text2, modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         return
@@ -526,5 +529,26 @@ fun PlacesScreen() {
             if (msg.isNotBlank()) Text(msg, fontSize = 13.sp, color = C.text2)
         }
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+/** Últimas fotos del grupo en la pantalla del grupo. */
+@Composable
+fun FeedPreview(group: String) {
+    var posts by remember { mutableStateOf<List<com.mauricio.rodada.data.Post>>(emptyList()) }
+    val dirty by FeedState.dirty
+    LaunchedEffect(group, dirty) { posts = com.mauricio.rodada.data.Feed.list(group).orEmpty() }
+    Card(onClick = { Nav.go(Scr.Feed) }) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.PhotoLibrary, null, tint = C.accentText)
+            Text("  Fotos de las rodadas", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("Ver todo", color = C.accentText, fontWeight = FontWeight.SemiBold)
+        }
+        val pics = posts.flatMap { it.photos }.take(6)
+        if (pics.isEmpty()) Text("Comparte las fotos de la rodada: solo las ve tu grupo, con me gusta y comentarios.", fontSize = 14.sp, color = C.text2)
+        else Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            pics.forEach { coil.compose.AsyncImage(it, null, Modifier.size(92.dp).clip(RoundedCornerShape(12.dp)).background(C.bg),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop) }
+        }
     }
 }
