@@ -92,13 +92,15 @@ class RideService : Service(), SensorEventListener, LocationListener {
     private var lastLocT = 0L
     private var trackSize = -1
     private var track: List<P> = emptyList()
-    private var stopAfterSpikeT = 0L
     private var noticeT = 0L
 
     // Caídas
     private var lastFastT = 0L
-    private var spikeT = 0L
-    private var spikeG = 0.0
+    /** Golpes de los últimos segundos: tiempo y fuerza en G. */
+    private val spikes = ArrayDeque<Pair<Long, Double>>()
+    private val speeds = ArrayDeque<Pair<Long, Double>>()
+    private var stoppedAt = 0L
+    private var stopChecked = false
     // Cansancio
     private var stoppedSince = 0L
     private var ridingSince = 0L
@@ -122,7 +124,8 @@ class RideService : Service(), SensorEventListener, LocationListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        goForeground()
+        if (hasLocation()) runCatching { goForeground() }
+        else if (intent?.action == START) { stopSelf(); return START_NOT_STICKY }
         when (intent?.action) {
             START -> { share = intent.getBooleanExtra("share", false); begin() }
             STOP -> finish()
@@ -245,7 +248,11 @@ class RideService : Service(), SensorEventListener, LocationListener {
             Sensor.TYPE_ACCELEROMETER -> {
                 tele.onAccel(e.values[0], e.values[1], e.values[2], e.timestamp)
                 val g = Math.sqrt((e.values[0] * e.values[0] + e.values[1] * e.values[1] + e.values[2] * e.values[2]).toDouble()) / Telemetry.G
-                if (g > 2.5 && System.currentTimeMillis() - lastFastT < 10_000) { spikeT = System.currentTimeMillis(); spikeG = maxOf(spikeG, g) }
+                if (g > 2.5) {
+                    val now = System.currentTimeMillis()
+                    spikes.addLast(now to g)
+                    while (spikes.isNotEmpty() && now - spikes.first().first > 8_000) spikes.removeFirst()
+                }
             }
             Sensor.TYPE_GYROSCOPE -> tele.onGyro(e.values[0], e.values[1], e.values[2], e.timestamp)
         }
@@ -322,20 +329,26 @@ class RideService : Service(), SensorEventListener, LocationListener {
     }
 
     // ---------- Caídas ----------
+    /**
+     * Caída = ibas a más de 20 km/h, hubo un golpe fuerte justo antes de detenerte de golpe,
+     * sigues parado 5 segundos y la moto/celular quedó en otra posición (tirada).
+     * Los baches sueltos no cuentan porque después sigues avanzando.
+     */
     private fun checkCrash(now: Long, speed: Double) {
+        speeds.addLast(now to speed)
+        while (speeds.isNotEmpty() && now - speeds.first().first > 10_000) speeds.removeFirst()
         if (!Store.settings.value.crashDetection || crashJob != null || paused) return
-        // Golpe fuerte mientras ibas rápido, y luego te detuviste de golpe
-        if (spikeT == 0L || now - spikeT > 14_000) { if (spikeT != 0L) { spikeG = 0.0; spikeT = 0L; stopAfterSpikeT = 0L }; return }
-        if (speed > 5) { stopAfterSpikeT = 0L; return }
-        if (stopAfterSpikeT == 0L) stopAfterSpikeT = now
-        // Tuvo que pararse de golpe (en menos de 6 s después del golpe) y quedarse parado 5 s
-        if (stopAfterSpikeT - spikeT > 6_000) return
-        if (now - stopAfterSpikeT < 5_000) return
+        if (speed > 5) { stoppedAt = 0L; stopChecked = false; return }
+        if (stoppedAt == 0L) stoppedAt = now
+        if (stopChecked || now - stoppedAt < 5_000) return
+        stopChecked = true
+        // ¿Venía rápido 2–6 s antes de parar?
+        val before = speeds.filter { it.first in (stoppedAt - 6_000)..(stoppedAt - 1_000) }.maxOfOrNull { it.second } ?: 0.0
+        if (before < 20) return
+        // Golpe más fuerte entre 5 s antes de parar y 2 s después
+        val hit = spikes.filter { it.first in (stoppedAt - 5_000)..(stoppedAt + 2_000) }.maxOfOrNull { it.second } ?: 0.0
         val tilt = tele.tiltFromNormal()
-        if (spikeG >= 4.0 || tilt > 55) {
-            spikeT = 0L; spikeG = 0.0; stopAfterSpikeT = 0L
-            triggerCrash(manual = false)
-        }
+        if ((hit >= 4.5 && tilt > 30) || (hit >= 2.5 && tilt > 55)) triggerCrash(manual = false)
     }
 
     private fun triggerCrash(manual: Boolean, test: Boolean = false) {

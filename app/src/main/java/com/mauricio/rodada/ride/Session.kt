@@ -63,9 +63,27 @@ object Session {
     @Volatile var cancelCrash = false
     @Volatile var helpNow = false
 
-    fun start(ctx: Context, share: Boolean) {
+    private fun located(ctx: Context) =
+        ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /** Devuelve false si falta el permiso de ubicación (y abre los ajustes de la app para darlo). */
+    fun start(ctx: Context, share: Boolean): Boolean {
+        if (!located(ctx)) {
+            android.widget.Toast.makeText(ctx, "Rodada necesita el permiso de ubicación precisa para grabar la rodada.", android.widget.Toast.LENGTH_LONG).show()
+            runCatching {
+                ctx.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            return false
+        }
         val i = Intent(ctx, RideService::class.java).setAction(RideService.START).putExtra("share", share)
         ContextCompat.startForegroundService(ctx, i)
+        return true
+    }
+
+    private fun launch(ctx: Context, action: String) {
+        val i = Intent(ctx, RideService::class.java).setAction(action)
+        if (located(ctx)) ContextCompat.startForegroundService(ctx, i) else ctx.startService(i)
     }
 
     fun stop(ctx: Context) {
@@ -82,12 +100,12 @@ object Session {
 
     /** Botón SOS manual: avisa de inmediato. */
     fun sos(ctx: Context) {
-        ContextCompat.startForegroundService(ctx, Intent(ctx, RideService::class.java).setAction(RideService.SOS))
+        launch(ctx, RideService.SOS)
     }
 
     /** Simula una caída para probar la alerta (no manda mensajes reales). */
     fun testCrash(ctx: Context) {
-        ContextCompat.startForegroundService(ctx, Intent(ctx, RideService::class.java).setAction(RideService.TEST))
+        launch(ctx, RideService.TEST)
     }
 
     fun imOk() { cancelCrash = true }
