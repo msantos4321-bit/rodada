@@ -1,0 +1,12 @@
+<resources>
+    <color name="fondo">#F5F5F7</color>
+    <style name="Theme.Rodada" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/fondo</item>
+        <item name="android:colorBackground">@color/fondo</item>
+        <item name="android:statusBarColor">@color/fondo</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:colorAccent">#D9480F</item>
+    </style>
+</resources>
