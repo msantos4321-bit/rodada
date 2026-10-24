@@ -6,6 +6,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -118,7 +121,8 @@ fun App(act: MainActivity) {
         finished?.let { Nav.tab(Scr.Home); Nav.go(Scr.Summary(it)); Session.finished.value = null }
     }
 
-    BackHandler(enabled = Nav.stack.size > 1) { Nav.back() }
+    // Regresar: primero dentro de la sección; desde cualquier pestaña, al Inicio (no se cierra la app a media rodada)
+    BackHandler(enabled = Nav.stack.size > 1 || Nav.current != Scr.Home) { if (!Nav.back()) Nav.tab(Scr.Home) }
 
     val cur = Nav.current
     val crash by Session.crash.collectAsState()
@@ -161,7 +165,19 @@ fun App(act: MainActivity) {
                 Triple(Scr.Garage, "Garaje", Icons.Default.Garage),
             )
             val root = Nav.stack.first()
-            if (cur != Scr.Ride && cur != Scr.Live && cur != Scr.PhotoView) NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
+            val dash by Session.dash.collectAsState()
+            // Barra «Rodando» en las demás pantallas para volver a la rodada
+            if (dash.recording && cur != Scr.Ride && cur != Scr.Live && cur != Scr.PhotoView) {
+                androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().background(C.accent).clickable { Nav.tab(Scr.Ride) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    androidx.compose.foundation.layout.Box(Modifier.size(10.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape))
+                    Text("  ${if (dash.paused) "Rodada en pausa" else "Rodando"} · ${com.mauricio.rodada.data.Geo.fmtKm(dash.distanceM)} · ${dash.speed.toInt()} km/h",
+                        color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text("Volver ›", color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                }
+            }
+            val fullRide = cur == Scr.Ride && dash.recording
+            if (!fullRide && cur != Scr.Live && cur != Scr.PhotoView) NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
                 tabs.forEach { (s, label, icon) ->
                     NavigationBarItem(selected = root == s, onClick = { Nav.tab(s) },
                         icon = { Icon(icon, label) }, label = { Text(label) },

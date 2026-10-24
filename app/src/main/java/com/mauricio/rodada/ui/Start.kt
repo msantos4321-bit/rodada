@@ -106,6 +106,7 @@ fun Onboarding(done: () -> Unit) {
                     step = 2
                 }
                 OutlineBtn("Lo hago después", Modifier.fillMaxWidth()) { step = 2 }
+                androidx.compose.material3.TextButton(onClick = { step = 0 }) { Text("‹ Atrás", color = C.text2) }
             }
             else -> {
                 Text("Contactos de emergencia", style = MaterialTheme.typography.headlineLarge)
@@ -127,6 +128,7 @@ fun Onboarding(done: () -> Unit) {
                     if (Build.VERSION.SDK_INT >= 33) req += Manifest.permission.POST_NOTIFICATIONS
                     perms.launch(req.toTypedArray())
                 }
+                androidx.compose.material3.TextButton(onClick = { step = 1 }) { Text("‹ Atrás", color = C.text2) }
             }
         }
         Spacer(Modifier.height(24.dp))

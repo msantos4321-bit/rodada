@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.PlayArrow
@@ -174,6 +175,12 @@ fun RideScreen() {
             onTap = { follow = false })
 
         Column(Modifier.fillMaxWidth().statusBarsPadding().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Salir al menú sin terminar la rodada (sigue grabando y navegando)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SoftButton("Menú", icon = Icons.Default.Home, height = 44.dp) { Nav.tab(Scr.Home) }
+                if (d.sharing) SoftButton("Grupo", icon = Icons.Default.Groups, height = 44.dp) { Nav.go(Scr.Live) }
+                SoftButton("Ruta", icon = Icons.Default.Navigation, height = 44.dp) { Nav.tab(Scr.Routes) }
+            }
             val nav = d.nav
             if (nav != null && !nav.isTrack) {
                 Row(Modifier.fillMaxWidth().shadow(6.dp, RoundedCornerShape(22.dp)).clip(RoundedCornerShape(22.dp)).background(Color.White).padding(14.dp),
@@ -247,15 +254,18 @@ fun RideScreen() {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SoftButton("SOS", Modifier.weight(1f), bg = C.redSoft, color = C.red, height = 56.dp) { Session.sos(ctx) }
                 SoftButton(if (d.paused) "Seguir" else "Pausa", Modifier.weight(1f), bg = C.bg, height = 56.dp) { Session.pause(ctx) }
-                SoftButton("Terminar", Modifier.weight(1f), bg = C.text, color = Color.White, height = 56.dp) { Session.stop(ctx) }
+                SoftButton("Terminar", Modifier.weight(1f), bg = C.text, color = Color.White, height = 56.dp) { stopAsk.value = true }
             }
         }
     }
+    if (stopAsk.value) Confirm("¿Terminar la rodada?", "Se guarda con su mapa y tus datos. Si solo quieres ver otra pantalla, toca «Menú»: la rodada sigue.", "Terminar",
+        { Session.stop(ctx) }, { stopAsk.value = false })
     if (refuelAsk.value) Confirm("¿Llenaste el tanque?", "Reinicio la cuenta de gasolina con el alcance de tu moto.", "Sí, lleno", { Session.refuel(ctx) }, { refuelAsk.value = false })
 }
 
 private val familyRef = mutableStateOf(false)
 private val refuelAsk = mutableStateOf(false)
+private val stopAsk = mutableStateOf(false)
 
 private fun cardinal(b: Double): String {
     if (b < 0) return "la ruta"
